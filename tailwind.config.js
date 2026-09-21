@@ -25,17 +25,12 @@ export default {
           '60%': { transform: 'scale(1.1)', opacity: '1' },
           '100%': { transform: 'scale(1)' },
         },
-        pulsate: {
-          '0%, 100%': { transform: 'scale(1)' },
-          '50%': { transform: 'scale(1.2)' },
-        },
       },
       animation: {
         pop: 'pop 0.3s ease-out',
         shake: 'shake 0.35s ease-in-out',
         fadeInUp: 'fadeInUp 0.4s ease-out forwards',
         bounceIn: 'bounceIn 0.5s ease-out',
-        pulsate: 'pulsate 0.6s ease-in-out infinite',
       },
     },
   },

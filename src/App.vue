@@ -16,14 +16,17 @@ const rootEl = ref(null)
 const particles = ref([])
 const confettiLaunched = ref(false)
 const confettiOrigin = reactive({ x: 0, y: 0 })
+const pulseScale = ref(1)
 let particleSeq = 0
 let wrongTimeout = null
 let celebrationTimers = []
+let pulseInterval = null
 
 function startRound(exclude) {
   clearTimeout(wrongTimeout)
   celebrationTimers.forEach(clearTimeout)
   celebrationTimers = []
+  stopPulse()
   entry.value = pickWord(exclude)
   options.value = generateOptions(entry.value)
   solved.value = false
@@ -38,6 +41,25 @@ function celebrate(firstOrigin) {
     celebrationTimers.push(setTimeout(() => burstConfetti(), elapsed))
   }
   celebrationTimers.push(setTimeout(() => startRound(entry.value.word), CELEBRATE_MS))
+  startPulse()
+}
+
+// JS-driven inline transform, not a Tailwind/CSS @keyframes animation —
+// mirrors the confetti technique above, which is the proven-working
+// pattern for one-off effects in this codebase (see x-blitz's CLAUDE.md).
+function startPulse() {
+  let up = true
+  pulseScale.value = 1.3
+  pulseInterval = setInterval(() => {
+    up = !up
+    pulseScale.value = up ? 1.3 : 1
+  }, 300)
+}
+
+function stopPulse() {
+  if (pulseInterval) clearInterval(pulseInterval)
+  pulseInterval = null
+  pulseScale.value = 1
 }
 
 function burstConfetti(origin) {
@@ -110,6 +132,7 @@ onMounted(() => speakWord(entry.value.word))
 onBeforeUnmount(() => {
   clearTimeout(wrongTimeout)
   celebrationTimers.forEach(clearTimeout)
+  stopPulse()
 })
 </script>
 
@@ -144,7 +167,10 @@ onBeforeUnmount(() => {
     <h1 class="text-lg font-bold text-slate-400">Letters</h1>
 
     <!-- Emoji -->
-    <div class="mt-4 text-[7rem] leading-none sm:text-[9rem]" :class="solved ? 'animate-pulsate' : ''">
+    <div
+      class="mt-4 text-[7rem] leading-none sm:text-[9rem]"
+      :style="{ transform: `scale(${pulseScale})`, transition: 'transform 0.3s ease-in-out' }"
+    >
       {{ entry.emoji }}
     </div>
 
