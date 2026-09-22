@@ -46,6 +46,30 @@ export const WORDS = [
 ]
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
+const VOWELS = 'AEIOU'.split('')
+
+// Consonants a 5-year-old plausibly mixes up — shape (M/N, B/D/P/Q), sound
+// (C/G/K, F/V, T/D, S/Z), or both. Used to make multi-letter decoy chunks
+// look close to the real answer instead of random noise.
+const CLOSE_CONSONANTS = {
+  B: ['D', 'P'],
+  D: ['B', 'P'],
+  P: ['Q', 'B'],
+  Q: ['P', 'D'],
+  M: ['N'],
+  N: ['M'],
+  C: ['G', 'K'],
+  G: ['C'],
+  K: ['C', 'G'],
+  F: ['V'],
+  V: ['F', 'W'],
+  W: ['V'],
+  T: ['D'],
+  S: ['Z'],
+  Z: ['S'],
+  L: ['R'],
+  R: ['L'],
+}
 
 function shuffle(arr) {
   const a = [...arr]
@@ -67,13 +91,66 @@ function randomChunk(length) {
   return s
 }
 
+function pickRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)]
+}
+
+// Swap the letter at `index` for a plausibly-confusable one: another vowel
+// for a vowel, a close consonant for a consonant.
+function swapLetter(chars, index) {
+  const ch = chars[index]
+  if (VOWELS.includes(ch)) {
+    chars[index] = pickRandom(VOWELS.filter((v) => v !== ch))
+  } else {
+    const alternatives = CLOSE_CONSONANTS[ch] || ALPHABET.filter((a) => a !== ch)
+    chars[index] = pickRandom(alternatives)
+  }
+}
+
+// Swap the position of two letters within the chunk.
+function scrambleLetters(chars) {
+  if (chars.length < 2) return
+  const i = Math.floor(Math.random() * chars.length)
+  let j = Math.floor(Math.random() * chars.length)
+  while (j === i) j = Math.floor(Math.random() * chars.length)
+  ;[chars[i], chars[j]] = [chars[j], chars[i]]
+}
+
+// Start from the correct chunk and apply exactly one transformation (vowel
+// swap, close-consonant swap, or letter scramble) so decoys look like
+// plausible near-misses instead of random letter soup.
+function makeDecoy(correct) {
+  const chars = correct.split('')
+  if (chars.length >= 2 && Math.random() < 0.35) {
+    scrambleLetters(chars)
+  } else {
+    swapLetter(chars, Math.floor(Math.random() * chars.length))
+  }
+  return chars.join('')
+}
+
 // The correct leading chunk of `letterCount` letters + 3 decoy chunks of the
-// same length, shuffled. At letterCount 1 this is just entry.letter, and the
-// nearMiss (B/D, P/Q, C/G, M/N) is used as one decoy same as before.
+// same length, shuffled.
 export function generateOptions(entry, letterCount = 1) {
   const correct = entry.word.slice(0, letterCount).toUpperCase()
   const pool = new Set()
-  if (letterCount === 1 && entry.nearMiss) pool.add(entry.nearMiss)
+
+  // Single-letter mode keeps the original curated nearMiss + random letters.
+  if (letterCount === 1) {
+    if (entry.nearMiss) pool.add(entry.nearMiss)
+    while (pool.size < 3) {
+      const candidate = randomChunk(1)
+      if (candidate !== correct) pool.add(candidate)
+    }
+    return shuffle([correct, ...pool])
+  }
+
+  let attempts = 0
+  while (pool.size < 3 && attempts < 50) {
+    attempts++
+    const candidate = makeDecoy(correct)
+    if (candidate !== correct) pool.add(candidate)
+  }
   while (pool.size < 3) {
     const candidate = randomChunk(letterCount)
     if (candidate !== correct) pool.add(candidate)

@@ -13,6 +13,7 @@ const BURST_INTERVAL_MS = 500
 const WRONG_LOCK_MS = 2000
 
 const screen = ref('welcome')
+const settingsReturnTo = ref('welcome')
 const settings = ref(getSettings())
 const entry = ref(pickWord())
 const options = ref(generateOptions(entry.value, settings.value.letterCount))
@@ -163,6 +164,11 @@ function updateSettings(next) {
   saveSettings(next)
 }
 
+function openSettings(from) {
+  settingsReturnTo.value = from
+  screen.value = 'settings'
+}
+
 onBeforeUnmount(() => {
   clearTimeout(wrongTimeout)
   celebrationTimers.forEach(clearTimeout)
@@ -171,12 +177,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Welcome v-if="screen === 'welcome'" @play="startGame" @settings="screen = 'settings'" />
+  <Welcome v-if="screen === 'welcome'" @play="startGame" @settings="openSettings('welcome')" />
 
   <Settings
     v-else-if="screen === 'settings'"
     :settings="settings"
-    @back="screen = 'welcome'"
+    @back="screen = settingsReturnTo"
     @update-settings="updateSettings"
   />
 
@@ -245,7 +251,7 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <SuccessPopup v-if="showPopup" @play-again="playAgain" />
+    <SuccessPopup v-if="showPopup" @play-again="playAgain" @settings="openSettings('game')" />
 
     <!-- Wrong-tap lockout -->
     <div
