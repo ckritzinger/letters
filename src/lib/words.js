@@ -61,13 +61,21 @@ export function pickWord(excludeWord) {
   return pool[Math.floor(Math.random() * pool.length)]
 }
 
-// 4 options: correct letter + near-miss (if defined) + random letters, shuffled.
-export function generateOptions(entry) {
-  const correct = entry.letter
+function randomChunk(length) {
+  let s = ''
+  for (let i = 0; i < length; i++) s += ALPHABET[Math.floor(Math.random() * ALPHABET.length)]
+  return s
+}
+
+// The correct leading chunk of `letterCount` letters + 3 decoy chunks of the
+// same length, shuffled. At letterCount 1 this is just entry.letter, and the
+// nearMiss (B/D, P/Q, C/G, M/N) is used as one decoy same as before.
+export function generateOptions(entry, letterCount = 1) {
+  const correct = entry.word.slice(0, letterCount).toUpperCase()
   const pool = new Set()
-  if (entry.nearMiss) pool.add(entry.nearMiss)
+  if (letterCount === 1 && entry.nearMiss) pool.add(entry.nearMiss)
   while (pool.size < 3) {
-    const candidate = ALPHABET[Math.floor(Math.random() * ALPHABET.length)]
+    const candidate = randomChunk(letterCount)
     if (candidate !== correct) pool.add(candidate)
   }
   return shuffle([correct, ...pool])

@@ -1,16 +1,26 @@
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, onBeforeUnmount } from 'vue'
 import { pickWord, generateOptions } from './lib/words.js'
 import { speakWord } from './lib/speech.js'
+import { getSettings, saveSettings } from './lib/storage.js'
+import Welcome from './components/Welcome.vue'
+import Settings from './components/Settings.vue'
+import SuccessPopup from './components/SuccessPopup.vue'
 
 const CONFETTI_COLORS = ['#f59e0b', '#ef4444', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#eab308', '#14b8a6']
 const CELEBRATE_MS = 3000
 const BURST_INTERVAL_MS = 500
+const WRONG_LOCK_MS = 2000
 
+const screen = ref('welcome')
+const settings = ref(getSettings())
 const entry = ref(pickWord())
-const options = ref(generateOptions(entry.value))
+const options = ref(generateOptions(entry.value, settings.value.letterCount))
+const correctChunk = computed(() => entry.value.word.slice(0, settings.value.letterCount).toUpperCase())
 const solved = ref(false)
+const showPopup = ref(false)
 const wrongId = ref(null)
+const locked = ref(false)
 const rootEl = ref(null)
 
 const particles = ref([])
@@ -28,9 +38,11 @@ function startRound(exclude) {
   celebrationTimers = []
   stopPulse()
   entry.value = pickWord(exclude)
-  options.value = generateOptions(entry.value)
+  options.value = generateOptions(entry.value, settings.value.letterCount)
   solved.value = false
+  showPopup.value = false
   wrongId.value = null
+  locked.value = false
   particles.value = []
   speakWord(entry.value.word)
 }
@@ -40,8 +52,17 @@ function celebrate(firstOrigin) {
   for (let elapsed = BURST_INTERVAL_MS; elapsed < CELEBRATE_MS; elapsed += BURST_INTERVAL_MS) {
     celebrationTimers.push(setTimeout(() => burstConfetti(), elapsed))
   }
-  celebrationTimers.push(setTimeout(() => startRound(entry.value.word), CELEBRATE_MS))
+  celebrationTimers.push(
+    setTimeout(() => {
+      stopPulse()
+      showPopup.value = true
+    }, CELEBRATE_MS),
+  )
   startPulse()
+}
+
+function playAgain() {
+  startRound(entry.value.word)
 }
 
 // JS-driven inline transform, not a Tailwind/CSS @keyframes animation —
@@ -103,10 +124,10 @@ function burstConfetti(origin) {
   }, 1000)
 }
 
-function handleTap(letter, event) {
-  if (solved.value) return
+function handleTap(chunk, event) {
+  if (solved.value || locked.value) return
 
-  if (letter === entry.value.letter) {
+  if (chunk === correctChunk.value) {
     solved.value = true
     wrongId.value = null
     let origin = null
@@ -120,15 +141,28 @@ function handleTap(letter, event) {
     }
     celebrate(origin)
   } else {
-    wrongId.value = letter
+    wrongId.value = chunk
+    locked.value = true
     clearTimeout(wrongTimeout)
     wrongTimeout = setTimeout(() => {
       wrongId.value = null
-    }, 400)
+      locked.value = false
+    }, WRONG_LOCK_MS)
   }
 }
 
-onMounted(() => speakWord(entry.value.word))
+function startGame() {
+  entry.value = pickWord()
+  options.value = generateOptions(entry.value, settings.value.letterCount)
+  screen.value = 'game'
+  speakWord(entry.value.word)
+}
+
+function updateSettings(next) {
+  settings.value = next
+  saveSettings(next)
+}
+
 onBeforeUnmount(() => {
   clearTimeout(wrongTimeout)
   celebrationTimers.forEach(clearTimeout)
@@ -137,10 +171,20 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <Welcome v-if="screen === 'welcome'" @play="startGame" @settings="screen = 'settings'" />
+
+  <Settings
+    v-else-if="screen === 'settings'"
+    :settings="settings"
+    @back="screen = 'welcome'"
+    @update-settings="updateSettings"
+  />
+
   <div
+    v-else
     ref="rootEl"
     class="relative flex min-h-[100dvh] flex-col items-center overflow-hidden px-4 pb-10 pt-8 transition-colors duration-300"
-    :class="solved ? 'bg-emerald-50' : 'bg-slate-50'"
+    :class="[solved ? 'bg-emerald-50' : 'bg-slate-50', locked && 'animate-shake']"
   >
     <!-- Confetti burst -->
     <div
@@ -174,30 +218,41 @@ onBeforeUnmount(() => {
       {{ entry.emoji }}
     </div>
 
-    <!-- Word with blanked first letter -->
+    <!-- Word with blanked leading letters -->
     <div class="mt-4 text-4xl font-extrabold lowercase tracking-wide text-slate-800 sm:text-5xl">
-      <span v-if="solved" class="text-emerald-500">{{ entry.letter }}</span>
-      <span v-else class="text-slate-500">_</span>{{ entry.word.slice(1) }}
+      <span v-if="solved" class="text-emerald-500">{{ correctChunk }}</span>
+      <span v-else class="text-slate-500">{{ '_'.repeat(settings.letterCount) }}</span>{{ entry.word.slice(settings.letterCount) }}
     </div>
 
     <!-- Letter options -->
     <div class="mt-8 grid w-full max-w-xs grid-cols-2 gap-4">
       <button
-        v-for="letter in options"
-        :key="letter"
-        :disabled="solved"
-        @click="handleTap(letter, $event)"
-        class="aspect-square rounded-3xl text-5xl font-extrabold lowercase shadow-sm transition-all duration-150 sm:text-6xl"
+        v-for="chunk in options"
+        :key="chunk"
+        :disabled="solved || locked"
+        @click="handleTap(chunk, $event)"
+        class="aspect-square rounded-3xl font-extrabold lowercase shadow-sm transition-all duration-150"
         :class="[
-          solved && letter === entry.letter
+          settings.letterCount === 1 ? 'text-5xl sm:text-6xl' : 'text-3xl sm:text-4xl',
+          solved && chunk === correctChunk
             ? 'bg-emerald-400 text-white animate-pop'
-            : wrongId === letter
+            : wrongId === chunk
               ? 'bg-rose-400 text-white animate-shake'
               : 'bg-white text-slate-800 hover:bg-indigo-50 active:scale-95 disabled:opacity-40',
         ]"
       >
-        {{ letter }}
+        {{ chunk }}
       </button>
+    </div>
+
+    <SuccessPopup v-if="showPopup" @play-again="playAgain" />
+
+    <!-- Wrong-tap lockout -->
+    <div
+      v-if="locked"
+      class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/20"
+    >
+      <span class="text-8xl">⛔</span>
     </div>
   </div>
 </template>
